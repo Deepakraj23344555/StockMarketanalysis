@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 # Streamlit configuration
 st.set_page_config(page_title="Reliance Stock Analysis", layout="wide")
 
-# Title
+# App title
 st.title("📊 Reliance Industries Stock Market Dashboard")
 
 # Sidebar date selection
@@ -18,7 +18,7 @@ st.sidebar.header("Settings")
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2021-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("2024-12-31"))
 
-# Load data from Yahoo Finance
+# Download historical data
 @st.cache_data
 def load_data():
     df = yf.download("RELIANCE.NS", start=start_date, end=end_date)
@@ -27,40 +27,42 @@ def load_data():
 
 df = load_data()
 
-# Debug preview
-st.write("🔍 Preview of Data", df.head())
-st.write("📌 Columns Found:", df.columns.tolist())
+# Preview and safety check
+st.write("✅ Downloaded Data Preview")
+st.write(df.head())
+st.write("📌 Columns in Data:", df.columns.tolist())
 
-# Error handling
-if df.empty or "Close" not in df.columns:
-    st.error("No data retrieved or 'Close' column missing. Please check date or ticker.")
+# Handle missing or incorrect data
+if df.empty:
+    st.error("❌ No data retrieved. Please check the date range or internet connection.")
     st.stop()
 
-# Ensure Close column is a 1D Series
-close_series = df["Close"]
-if isinstance(close_series, pd.DataFrame):
-    close_series = close_series.iloc[:, 0]
+if "Close" not in df.columns:
+    st.error("❌ 'Close' column not found. Data may be corrupted.")
+    st.stop()
 
-# Convert Close to numeric safely
-df["Close"] = pd.to_numeric(close_series.values.flatten(), errors="coerce")
+# Convert 'Close' column to numeric safely
+try:
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df.dropna(subset=["Close"], inplace=True)
+except Exception as e:
+    st.error(f"❌ Error converting 'Close' to numeric: {e}")
+    st.stop()
 
-# Drop rows with missing Close values
-df.dropna(subset=["Close"], inplace=True)
-
-# Display historical data
+# Display latest data
 st.subheader("📈 Historical Stock Data")
 st.dataframe(df.tail(), use_container_width=True)
 
-# Technical Indicators
+# Technical indicators
 try:
     df["SMA_20"] = ta.trend.SMAIndicator(close=df["Close"], window=20).sma_indicator()
     df["RSI"] = ta.momentum.RSIIndicator(close=df["Close"], window=14).rsi()
     df["MACD"] = ta.trend.MACD(close=df["Close"]).macd_diff()
 except Exception as e:
-    st.error(f"Error computing indicators: {e}")
+    st.error(f"❌ Failed to calculate technical indicators: {e}")
     st.stop()
 
-# Tabs for visualizing indicators
+# Plotting indicators
 st.subheader("📉 Technical Analysis")
 tab1, tab2, tab3 = st.tabs(["SMA 20", "RSI", "MACD"])
 
@@ -80,14 +82,14 @@ col1, col2, col3 = st.columns(3)
 col1.metric("Market Cap", f'{info.get("marketCap", 0):,}')
 col2.metric("PE Ratio", info.get("trailingPE", "N/A"))
 roe = info.get("returnOnEquity")
-col3.metric("Return on Equity", f"{round(roe*100, 2)}%" if roe else "N/A")
+col3.metric("Return on Equity", f"{round(roe * 100, 2)}%" if roe else "N/A")
 
 st.write("📌 Sector:", info.get("sector", "N/A"))
 st.write("📌 Website:", info.get("website", "N/A"))
 st.write("📌 Business Summary:")
-st.markdown(f"> {info.get('longBusinessSummary', 'No summary available.')}")
+st.markdown(f'> {info.get("longBusinessSummary", "Summary not available.")}')
 
-# Sentiment Analysis
+# Sentiment Analysis (News headlines)
 st.subheader("📰 News Sentiment Analysis")
 
 def fetch_news_sentiment():
@@ -104,11 +106,10 @@ def fetch_news_sentiment():
                 headlines.append((text, sentiment["compound"]))
         return headlines[:10]
     except:
-        return [("News fetch failed", 0.0)]
+        return [("❌ Failed to fetch news", 0.0)]
 
 news_sentiments = fetch_news_sentiment()
-
 for headline, score in news_sentiments:
     st.write(f"**{headline}** — Sentiment Score: {score:.2f}")
 
-st.success("✅ Analysis Complete")
+st.success("✅ All analysis completed successfully!")
