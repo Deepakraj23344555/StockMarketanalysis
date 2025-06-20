@@ -8,3 +8,4 @@ ta
 vaderSentiment
 requests
 beautifulsoup4
+
