@@ -1,9 +1,8 @@
 streamlit
 yfinance
 pandas
-matplotlib
-seaborn
+numpy
 ta
-vaderSentiment
-requests
+textblob
 beautifulsoup4
+requests
