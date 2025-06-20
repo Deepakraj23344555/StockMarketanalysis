@@ -1,11 +1,9 @@
+streamlit
 yfinance
 pandas
-numpy
 matplotlib
 seaborn
-streamlit
 ta
 vaderSentiment
 requests
 beautifulsoup4
-
