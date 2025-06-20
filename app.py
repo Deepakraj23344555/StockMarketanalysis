@@ -7,18 +7,16 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import requests
 from bs4 import BeautifulSoup
 
-# Streamlit configuration
+# Page setup
 st.set_page_config(page_title="Reliance Stock Analysis", layout="wide")
-
-# App title
 st.title("📊 Reliance Industries Stock Market Dashboard")
 
-# Sidebar date selection
+# Sidebar date inputs
 st.sidebar.header("Settings")
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2021-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("2024-12-31"))
 
-# Download historical data
+# Load data
 @st.cache_data
 def load_data():
     df = yf.download("RELIANCE.NS", start=start_date, end=end_date)
@@ -27,42 +25,49 @@ def load_data():
 
 df = load_data()
 
-# Preview and safety check
-st.write("✅ Downloaded Data Preview")
+# Debug info
+st.write("✅ Raw Data Preview")
 st.write(df.head())
-st.write("📌 Columns in Data:", df.columns.tolist())
+st.write("📌 Columns Available:", df.columns.tolist())
 
-# Handle missing or incorrect data
-if df.empty:
-    st.error("❌ No data retrieved. Please check the date range or internet connection.")
+# Check if data is empty or invalid
+if df is None or df.empty:
+    st.error("❌ No data retrieved. Check date range or internet connection.")
     st.stop()
 
 if "Close" not in df.columns:
-    st.error("❌ 'Close' column not found. Data may be corrupted.")
+    st.error("❌ 'Close' column missing. Please verify data source.")
     st.stop()
 
-# Convert 'Close' column to numeric safely
+# Convert 'Close' column safely
 try:
-    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    close_data = df["Close"]
+
+    # If Close is accidentally a DataFrame (multi-indexed), fix it
+    if isinstance(close_data, pd.DataFrame):
+        close_data = close_data.iloc[:, 0]
+
+    df["Close"] = pd.to_numeric(close_data, errors="coerce")
     df.dropna(subset=["Close"], inplace=True)
+
 except Exception as e:
     st.error(f"❌ Error converting 'Close' to numeric: {e}")
     st.stop()
 
-# Display latest data
-st.subheader("📈 Historical Stock Data")
+# Show latest cleaned data
+st.subheader("📈 Cleaned Stock Data")
 st.dataframe(df.tail(), use_container_width=True)
 
-# Technical indicators
+# Technical Indicators
 try:
     df["SMA_20"] = ta.trend.SMAIndicator(close=df["Close"], window=20).sma_indicator()
     df["RSI"] = ta.momentum.RSIIndicator(close=df["Close"], window=14).rsi()
     df["MACD"] = ta.trend.MACD(close=df["Close"]).macd_diff()
 except Exception as e:
-    st.error(f"❌ Failed to calculate technical indicators: {e}")
+    st.error(f"❌ Technical Indicator Error: {e}")
     st.stop()
 
-# Plotting indicators
+# Technical Analysis Tabs
 st.subheader("📉 Technical Analysis")
 tab1, tab2, tab3 = st.tabs(["SMA 20", "RSI", "MACD"])
 
@@ -87,9 +92,9 @@ col3.metric("Return on Equity", f"{round(roe * 100, 2)}%" if roe else "N/A")
 st.write("📌 Sector:", info.get("sector", "N/A"))
 st.write("📌 Website:", info.get("website", "N/A"))
 st.write("📌 Business Summary:")
-st.markdown(f'> {info.get("longBusinessSummary", "Summary not available.")}')
+st.markdown(f'> {info.get("longBusinessSummary", "No summary available.")}')
 
-# Sentiment Analysis (News headlines)
+# Sentiment Analysis from Google News
 st.subheader("📰 News Sentiment Analysis")
 
 def fetch_news_sentiment():
@@ -105,11 +110,12 @@ def fetch_news_sentiment():
                 sentiment = analyzer.polarity_scores(text)
                 headlines.append((text, sentiment["compound"]))
         return headlines[:10]
-    except:
-        return [("❌ Failed to fetch news", 0.0)]
+    except Exception as e:
+        return [(f"❌ Failed to fetch news: {e}", 0.0)]
 
+# Display news sentiment
 news_sentiments = fetch_news_sentiment()
 for headline, score in news_sentiments:
     st.write(f"**{headline}** — Sentiment Score: {score:.2f}")
 
-st.success("✅ All analysis completed successfully!")
+st.success("✅ All analysis complete.")
