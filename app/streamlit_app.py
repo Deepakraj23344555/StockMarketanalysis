@@ -1,86 +1,78 @@
-import streamlit as st
-import pandas as pd
-from textblob import TextBlob
-import yfinance as yf
-import ta
-import requests
-from bs4 import BeautifulSoup
+# Titan Stock Analysis with Streamlit
 
-# 1. Load Historical Stock Data
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+from ta.trend import SMAIndicator, MACD
+from ta.momentum import RSIIndicator
+from textblob import TextBlob
+from bs4 import BeautifulSoup
+import requests
+
+# ----------------------- Data Loader -----------------------
 @st.cache_data
-def load_data(ticker="TITAN.NS", start="2015-01-01"):
+def load_stock_data(ticker="TITAN.NS", start="2015-01-01"):
     df = yf.download(ticker, start=start)
     df.reset_index(inplace=True)
     return df
 
-# 2. Technical Indicators
-def add_technical_indicators(df):
-    df["SMA_50"] = ta.trend.sma_indicator(df["Close"], window=50)
-    df["RSI"] = ta.momentum.RSIIndicator(df["Close"]).rsi()
-    df["MACD"] = ta.trend.macd_diff(df["Close"])
+# ------------------ Technical Analysis ---------------------
+def apply_technical_indicators(df):
+    df['SMA_50'] = SMAIndicator(close=df['Close'], window=50).sma_indicator()
+    df['RSI'] = RSIIndicator(close=df['Close']).rsi()
+    df['MACD'] = MACD(close=df['Close']).macd_diff()
     return df
 
-# 3. Fundamental Analysis
+# ------------------ Fundamental Analysis -------------------
 def get_fundamentals(ticker="TITAN.NS"):
     stock = yf.Ticker(ticker)
     info = stock.info
     return {
         "Market Cap": info.get("marketCap"),
-        "PE Ratio": info.get("trailingPE"),
+        "Trailing P/E": info.get("trailingPE"),
         "Dividend Yield": info.get("dividendYield"),
         "ROE": info.get("returnOnEquity"),
         "Book Value": info.get("bookValue"),
         "Debt to Equity": info.get("debtToEquity"),
-        "EPS Growth": info.get("earningsQuarterlyGrowth"),
+        "Earnings Growth": info.get("earningsQuarterlyGrowth"),
     }
 
-# 4. Sentiment Analysis
+# ------------------ Sentiment Analysis ---------------------
 def get_news_headlines(keyword="Titan Company"):
-    headers = {"User-Agent": "Mozilla/5.0"}
     url = f"https://news.google.com/rss/search?q={keyword.replace(' ', '+')}"
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.content, 'xml')
-    headlines = [item.title.text for item in soup.find_all('item')][:10]
-    return headlines
+    r = requests.get(url)
+    soup = BeautifulSoup(r.content, features="xml")
+    headlines = [item.title.text for item in soup.findAll("item")]
+    return headlines[:10]
 
-def sentiment_score(texts):
+def analyze_sentiment(texts):
     sentiments = [TextBlob(text).sentiment.polarity for text in texts]
-    return round(sum(sentiments) / len(sentiments), 2) if sentiments else 0
+    return sum(sentiments)/len(sentiments) if sentiments else 0
 
-# STREAMLIT APP
+# -------------------- Streamlit App ------------------------
 st.set_page_config(page_title="Titan Stock Analysis", layout="wide")
-st.title("📊 Titan Company Stock Market Analysis")
+st.title("Titan Company Ltd (TITAN.NS) - Stock Analysis")
 
-# Load data
-df = load_data()
-df = add_technical_indicators(df)
+# Load Data
+df = load_stock_data()
+df = apply_technical_indicators(df)
 
-# Sidebar Controls
-st.sidebar.header("Display Options")
-show_fundamentals = st.sidebar.checkbox("Show Fundamentals", value=True)
-show_technical = st.sidebar.checkbox("Show Technical Analysis", value=True)
-show_sentiment = st.sidebar.checkbox("Show Sentiment Analysis", value=True)
+# Show Price Chart
+st.subheader("📈 Stock Price with SMA")
+st.line_chart(df.set_index("Date")[['Close', 'SMA_50']])
 
-# Fundamentals
-if show_fundamentals:
-    st.subheader("🧾 Fundamental Analysis")
-    fundamentals = get_fundamentals()
-    st.dataframe(pd.DataFrame(fundamentals.items(), columns=["Metric", "Value"]))
+# Technical Indicators
+st.subheader("📊 Technical Indicators")
+st.line_chart(df.set_index("Date")[['RSI', 'MACD']])
 
-# Technical Analysis
-if show_technical:
-    st.subheader("📈 Technical Analysis")
-    st.line_chart(df.set_index("Date")[["Close", "SMA_50"]])
-    st.line_chart(df.set_index("Date")[["RSI", "MACD"]])
+# Fundamental Analysis
+st.subheader("🧾 Fundamental Analysis")
+fundamentals = get_fundamentals()
+for k, v in fundamentals.items():
+    st.metric(label=k, value=v)
 
 # Sentiment Analysis
-if show_sentiment:
-    st.subheader("📰 Sentiment Analysis from News")
-    headlines = get_news_headlines()
-    st.write("### Latest Headlines:")
-    for headline in headlines:
-        st.markdown(f"- {headline}")
-    sentiment = sentiment_score(headlines)
-    st.metric("Average Sentiment Score", sentiment)
-
-st.caption("Data Source: Yahoo Finance and Google News RSS")
+st.subheader("📰 Sentiment Analysis from News")
+news = get_news_headlines()
+sentiment_score = analyze_sentiment(news)
+st.metric("Average Sentiment Score", f"{sentiment_score:.2f}")
